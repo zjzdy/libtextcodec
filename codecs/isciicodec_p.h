@@ -22,22 +22,22 @@
 #include <cstdint>
 #include "textcodec.h"
 #include "textcodec_p.h"
+namespace zdytool {
+	class IsciiCodec : public TextCodec {
+	public:
+		explicit IsciiCodec(int i) : idx(i) {}
+		~IsciiCodec();
 
-class IsciiCodec : public TextCodec {
-public:
-    explicit IsciiCodec(int i) : idx(i) {}
-    ~IsciiCodec();
+		static TextCodec *create(const char *name);
 
-    static TextCodec *create(const char *name);
+		string name() const;
+		int mibEnum() const;
 
-    string name() const;
-    int mibEnum() const;
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const;
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const;
-
-private:
-    int idx;
-};
-
+	private:
+		int idx;
+	};
+}
 #endif // ISCIICODEC_P_H

@@ -30,7 +30,7 @@
 
 #include <QtTest/QtTest>
 
-#include <../codecs/textcodec.h>
+#include <../textcodec.h>
 #include <qfile.h>
 #include <time.h>
 #if QT_CONFIG(process)
@@ -159,7 +159,9 @@ private slots:
     void moreToFromUnicode_data();
     void moreToFromUnicode();
 
+#ifndef Z_NO_BIG_TEXTCODECS
     void shiftJis();
+#endif
     void userCodec();
 };
 
@@ -168,7 +170,9 @@ void tst_QTextCodec::toUnicode_data()
     QTest::addColumn<QString>("fileName");
     QTest::addColumn<QString>("codecName");
 
+#ifndef Z_NO_BIG_TEXTCODECS
     QTest::newRow( "korean-eucKR" ) << QFINDTESTDATA("korean.txt") << "eucKR";
+#endif
     QTest::newRow( "UTF-8" ) << QFINDTESTDATA("utf8.txt") << "UTF-8";
 }
 
@@ -263,9 +267,12 @@ void tst_QTextCodec::fromUnicode_data()
     QTest::newRow("Apple Roman") << "Apple Roman" << true;
     //QTest::newRow("WINSAMI2") << "WINSAMI2" << true;
     QTest::newRow("TIS-620") << "TIS-620" << true;
+#ifndef Z_NO_BIG_TEXTCODECS
     QTest::newRow("SJIS") << "SJIS" << false;
+#endif
 
     // all codecs from documentation
+#ifndef Z_NO_BIG_TEXTCODECS
     QTest::newRow("Big5") << "Big5" << false;
     QTest::newRow("Big5-HKSCS") << "Big5-HKSCS" << false;
     QTest::newRow("CP949") << "CP949" << false;
@@ -273,17 +280,18 @@ void tst_QTextCodec::fromUnicode_data()
     QTest::newRow("EUC-JP") << "EUC-JP" << false;
     QTest::newRow("EUC-KR") << "EUC-KR" << false;
     QTest::newRow("GB18030") << "GB18030" << false;
+    QTest::newRow("ISO 2022-JP") << "ISO 2022-JP" << false;
+    QTest::newRow("Shift-JIS") << "Shift-JIS" << false;
+#endif
     QTest::newRow("HP-ROMAN8") << "HP-ROMAN8" << false;
     QTest::newRow("IBM 850") << "IBM 850" << false;
     QTest::newRow("IBM 866") << "IBM 866" << false;
     QTest::newRow("IBM 874") << "IBM 874" << false;
-    QTest::newRow("ISO 2022-JP") << "ISO 2022-JP" << false;
     //ISO 8859-1 to 10 and  ISO 8859-13 to 16 tested previously
     // Iscii-Bng, Dev, Gjr, Knd, Mlm, Ori, Pnj, Tlg, and Tml  tested in Iscii test
     QTest::newRow("KOI8-R") << "KOI8-R" << false;
     QTest::newRow("KOI8-U") << "KOI8-U" << false;
     QTest::newRow("Macintosh") << "Macintosh" << true;
-    QTest::newRow("Shift-JIS") << "Shift-JIS" << false;
     QTest::newRow("TIS-620") << "TIS-620" << false;
     QTest::newRow("TSCII") << "TSCII" << false;
     QTest::newRow("UTF-8") << "UTF-8" << false;
@@ -2402,7 +2410,7 @@ void tst_QTextCodec::moreToFromUnicode_data() {
     }
     QTest::newRow("KOI8-U") << QByteArray("KOI8-U") << koi8_u_ba;
 
-
+#ifndef Z_NO_BIG_TEXTCODECS
     QByteArray big5_ba;
     for (unsigned char u=0xa1; u<=0xf9; u++) {
         if (u==0xc8) {
@@ -2441,6 +2449,7 @@ void tst_QTextCodec::moreToFromUnicode_data() {
     }
 
     QTest::newRow("GB2312") << QByteArray("GB2312") << gb2312_ba;
+#endif
 }
 
 void tst_QTextCodec::moreToFromUnicode()
@@ -2455,11 +2464,12 @@ void tst_QTextCodec::moreToFromUnicode()
     QByteArray cStr = c.fromUnicode(uStr);
     QCOMPARE(testData, cStr);
 }
-
+#ifndef Z_NO_BIG_TEXTCODECS
 void tst_QTextCodec::shiftJis()
 {
     QByteArray backslashTilde("\\~");
     Q_TextCodec codec = Q_TextCodec::codecForName("shift_jis");
+    QVERIFY(codec.m_tcodec);
     QString string = codec.toUnicode(backslashTilde);
     QCOMPARE(string.length(), 2);
     QCOMPARE(string.at(0), QChar(QLatin1Char('\\')));
@@ -2468,7 +2478,7 @@ void tst_QTextCodec::shiftJis()
     QByteArray encoded = codec.fromUnicode(string);
     QCOMPARE(encoded, backslashTilde);
 }
-
+#endif
 struct UserCodec : public TextCodec
 {
     // implement pure virtuals

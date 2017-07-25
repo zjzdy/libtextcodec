@@ -22,20 +22,20 @@
 #include <cstdint>
 #include "textcodec.h"
 #include "textcodec_p.h"
+namespace zdytool {
+	class WindowsLocalCodec: public TextCodec
+	{
+	public:
+		WindowsLocalCodec();
+		~WindowsLocalCodec();
 
-class WindowsLocalCodec: public TextCodec
-{
-public:
-    WindowsLocalCodec();
-    ~WindowsLocalCodec();
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const;
+		u16string convertToUnicodeCharByChar(const char *chars, int length, ConverterState *state) const;
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const;
-    u16string convertToUnicodeCharByChar(const char *chars, int length, ConverterState *state) const;
+		string name() const;
+		int mibEnum() const;
 
-    string name() const;
-    int mibEnum() const;
-
-};
-
+	};
+}
 #endif

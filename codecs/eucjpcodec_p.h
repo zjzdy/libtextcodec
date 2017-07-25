@@ -49,29 +49,29 @@
 #include "textcodec.h"
 #include "textcodec_p.h"
 #include "jpunicode_p.h"
-
+namespace zdytool {
 #ifndef Z_NO_BIG_TEXTCODECS
 
-class EucJpCodec : public TextCodec {
-public:
-    static string _name();
-    static list<string> _aliases() { return list<string>(); }
-    static int _mibEnum();
+	class EucJpCodec : public TextCodec {
+	public:
+		static string _name();
+		static list<string> _aliases() { return list<string>(); }
+		static int _mibEnum();
 
-    string name() const { return _name(); }
-    list<string> aliases() const { return _aliases(); }
-    int mibEnum() const { return _mibEnum(); }
+		string name() const { return _name(); }
+		list<string> aliases() const { return _aliases(); }
+		int mibEnum() const { return _mibEnum(); }
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const;
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const;
 
-    EucJpCodec();
-    ~EucJpCodec();
+		EucJpCodec();
+		~EucJpCodec();
 
-protected:
-    const JpUnicodeConv *conv;
-};
+	protected:
+		const JpUnicodeConv *conv;
+	};
 
 #endif // Z_NO_BIG_TEXTCODECS
-
+}
 #endif // EUCJPCODEC_P_H

@@ -23,37 +23,37 @@
 #include <cstdint>
 #include "textcodec.h"
 #include "textcodec_p.h"
-
+namespace zdytool {
 #ifndef Z_NO_BIG_TEXTCODECS
 
-class Big5Codec : public TextCodec {
-public:
-    static string _name();
-    static list<string> _aliases();
-    static int _mibEnum();
+	class Big5Codec : public TextCodec {
+	public:
+		static string _name();
+		static list<string> _aliases();
+		static int _mibEnum();
 
-    string name() const { return _name(); }
-    list<string> aliases() const { return _aliases(); }
-    int mibEnum() const { return _mibEnum(); }
+		string name() const { return _name(); }
+		list<string> aliases() const { return _aliases(); }
+		int mibEnum() const { return _mibEnum(); }
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const;
-};
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const;
+	};
 
-class Big5hkscsCodec : public TextCodec {
-public:
-    static string _name();
-    static list<string> _aliases() { return list<string>(); }
-    static int _mibEnum();
+	class Big5hkscsCodec : public TextCodec {
+	public:
+		static string _name();
+		static list<string> _aliases() { return list<string>(); }
+		static int _mibEnum();
 
-    string name() const { return _name(); }
-    list<string> aliases() const { return _aliases(); }
-    int mibEnum() const { return _mibEnum(); }
+		string name() const { return _name(); }
+		list<string> aliases() const { return _aliases(); }
+		int mibEnum() const { return _mibEnum(); }
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const;
-};
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const;
+	};
 
 #endif // Z_NO_BIG_TEXTCODECS
-
+}
 #endif // BIG5CODEC_P_H

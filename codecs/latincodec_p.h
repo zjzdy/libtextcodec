@@ -22,33 +22,33 @@
 #include <cstdint>
 #include "textcodec.h"
 #include "textcodec_p.h"
+namespace zdytool {
+	class Latin1Codec : public TextCodec
+	{
+	public:
+		~Latin1Codec();
 
-class Latin1Codec : public TextCodec
-{
-public:
-    ~Latin1Codec();
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const;
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const;
-
-    string name() const;
-    list<string> aliases() const;
-    int mibEnum() const;
-};
+		string name() const;
+		list<string> aliases() const;
+		int mibEnum() const;
+	};
 
 
 
-class Latin15Codec: public TextCodec
-{
-public:
-    ~Latin15Codec();
+	class Latin15Codec: public TextCodec
+	{
+	public:
+		~Latin15Codec();
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const;
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const;
 
-    string name() const;
-    list<string> aliases() const;
-    int mibEnum() const;
-};
-
+		string name() const;
+		list<string> aliases() const;
+		int mibEnum() const;
+	};
+}
 #endif // LATINCODEC_P_H

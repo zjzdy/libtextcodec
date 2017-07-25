@@ -43,196 +43,195 @@
 #if defined (_XOPEN_UNIX) && !defined(__QNXNTO__) && !defined(__osf__) && !(defined(__ANDROID__) || defined(ANDROID))
 # include <langinfo.h>
 #endif
+namespace zdytool {
+    typedef list<TextCodec *>::const_iterator TextCodecListConstIt;
+    list<TextCodec *> allCodecs;
+    TextCodec *codecForLocale_m;
+    TextCodecCache codecCache;
 
-typedef list<TextCodec*>::const_iterator TextCodecListConstIt;
-list<TextCodec*> allCodecs;
-TextCodec *codecForLocale_m;
-TextCodecCache codecCache;
+    static std::recursive_mutex textCodecsMutex;
 
-static std::recursive_mutex textCodecsMutex;
+    static char z_tolower(char c) {
+        if (c >= 'A' && c <= 'Z') return c + 0x20;
+        return c;
+    }
 
-static char z_tolower(char c)
-{ if (c >= 'A' && c <= 'Z') return c + 0x20; return c; }
-static bool z_isalnum(char c)
-{ return (c >= '0' && c <= '9') || ((c | 0x20) >= 'a' && (c | 0x20) <= 'z'); }
+    static bool z_isalnum(char c) { return (c >= '0' && c <= '9') || ((c | 0x20) >= 'a' && (c | 0x20) <= 'z'); }
 
-bool TextCodec::TextCodecNameMatch(const char *n, const char *h)
-{
-    if (stricmp(n, h) == 0)
-        return true;
+    bool TextCodec::TextCodecNameMatch(const char *n, const char *h) {
+        if (stricmp(n, h) == 0)
+            return true;
 
-    // if the letters and numbers are the same, we have a match
-    while (*n != '\0') {
-        if (z_isalnum(*n)) {
-            for (;;) {
-                if (*h == '\0')
+        // if the letters and numbers are the same, we have a match
+        while (*n != '\0') {
+            if (z_isalnum(*n)) {
+                for (;;) {
+                    if (*h == '\0')
+                        return false;
+                    if (z_isalnum(*h))
+                        break;
+                    ++h;
+                }
+                if (z_tolower(*n) != z_tolower(*h))
                     return false;
-                if (z_isalnum(*h))
-                    break;
                 ++h;
             }
-            if (z_tolower(*n) != z_tolower(*h))
-                return false;
-            ++h;
+            ++n;
         }
-        ++n;
+        while (*h && !z_isalnum(*h))
+            ++h;
+        return (*h == '\0');
     }
-    while (*h && !z_isalnum(*h))
-           ++h;
-    return (*h == '\0');
-}
 
 
 #if !defined(WIN32) && !defined(Z_LOCALE_IS_UTF8)
-static TextCodec *checkForCodec(const string &name) {
-    TextCodec *c = TextCodec::codecForName(name);
-    if (!c) {
-        const int index = name.find('@');
-        if (index != -1) {
-            c = TextCodec::codecForName(name.substr(0,index));
+    static TextCodec *checkForCodec(const string &name) {
+        TextCodec *c = TextCodec::codecForName(name);
+        if (!c) {
+            const int index = name.find('@');
+            if (index != -1) {
+                c = TextCodec::codecForName(name.substr(0,index));
+            }
         }
+        return c;
     }
-    return c;
-}
 #endif
 
-static void setup();
+    static void setup();
 
 // \threadsafe
 // this returns the codec the method sets up as locale codec to
 // avoid a race condition in codecForLocale() when
 // setCodecForLocale(0) is called at the same time.
-static TextCodec *setupLocaleMapper()
-{
-    TextCodec *locale = 0;
+    static TextCodec *setupLocaleMapper() {
+        TextCodec *locale = 0;
 
-    {
-        std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
-        if (allCodecs.empty())
-            setup();
-    }
+        {
+            std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
+            if (allCodecs.empty())
+                setup();
+        }
 #if defined(Z_LOCALE_IS_UTF8)
-    locale = TextCodec::codecForName("UTF-8");
+        locale = TextCodec::codecForName("UTF-8");
 #elif defined(WIN32)
-    locale = TextCodec::codecForName("System");
+        locale = TextCodec::codecForName("System");
 #else
 
-    // First try getting the codecs name from nl_langinfo and see
-    // if we have a builtin codec for it.
+        // First try getting the codecs name from nl_langinfo and see
+        // if we have a builtin codec for it.
 
 #if defined (_XOPEN_UNIX) && !defined(__osf__)
-    char *charset = nl_langinfo(CODESET);
-    if (charset)
-        locale = TextCodec::codecForName(charset);
+        char *charset = nl_langinfo(CODESET);
+        if (charset)
+            locale = TextCodec::codecForName(charset);
 #endif
 
-    if (!locale) {
-        // Very poorly defined and followed standards causes lots of
-        // code to try to get all the cases...
-
-        // Try to determine locale codeset from locale name assigned to
-        // LC_CTYPE category.
-
-        // First part is getting that locale name.  First try setlocale() which
-        // definitely knows it, but since we cannot fully trust it, get ready
-        // to fall back to environment variables.
-        const string ctype = setlocale(LC_CTYPE, 0);
-
-        // Get the first nonempty value from $LC_ALL, $LC_CTYPE, and $LANG
-        // environment variables.
-        auto env = std::getenv("LC_ALL");
-        string lang = env ? env : "";
-        if (lang.empty() || lang == "C") {
-            env = std::getenv("LC_CTYPE");
-            lang = env ? env : "";
-        }
-        if (lang.empty() || lang == "C") {
-            env = std::getenv("LANG");
-            lang = env ? env : "";
-        }
-
-        // Now try these in order:
-        // 1. CODESET from ctype if it contains a .CODESET part (e.g. en_US.ISO8859-15)
-        // 2. CODESET from lang if it contains a .CODESET part
-        // 3. ctype (maybe the locale is named "ISO-8859-1" or something)
-        // 4. locale (ditto)
-        // 5. check for "@euro"
-        // 6. guess locale from ctype unless ctype is "C"
-        // 7. guess locale from lang
-
-        // 1. CODESET from ctype if it contains a .CODESET part (e.g. en_US.ISO8859-15)
-        int indexOfDot = ctype.find('.');
-        if (indexOfDot != -1)
-            locale = checkForCodec( ctype.substr(indexOfDot + 1) );
-
-        // 2. CODESET from lang if it contains a .CODESET part
         if (!locale) {
-            indexOfDot = lang.find('.');
+            // Very poorly defined and followed standards causes lots of
+            // code to try to get all the cases...
+
+            // Try to determine locale codeset from locale name assigned to
+            // LC_CTYPE category.
+
+            // First part is getting that locale name.  First try setlocale() which
+            // definitely knows it, but since we cannot fully trust it, get ready
+            // to fall back to environment variables.
+            const string ctype = setlocale(LC_CTYPE, 0);
+
+            // Get the first nonempty value from $LC_ALL, $LC_CTYPE, and $LANG
+            // environment variables.
+            auto env = std::getenv("LC_ALL");
+            string lang = env ? env : "";
+            if (lang.empty() || lang == "C") {
+                env = std::getenv("LC_CTYPE");
+                lang = env ? env : "";
+            }
+            if (lang.empty() || lang == "C") {
+                env = std::getenv("LANG");
+                lang = env ? env : "";
+            }
+
+            // Now try these in order:
+            // 1. CODESET from ctype if it contains a .CODESET part (e.g. en_US.ISO8859-15)
+            // 2. CODESET from lang if it contains a .CODESET part
+            // 3. ctype (maybe the locale is named "ISO-8859-1" or something)
+            // 4. locale (ditto)
+            // 5. check for "@euro"
+            // 6. guess locale from ctype unless ctype is "C"
+            // 7. guess locale from lang
+
+            // 1. CODESET from ctype if it contains a .CODESET part (e.g. en_US.ISO8859-15)
+            int indexOfDot = ctype.find('.');
             if (indexOfDot != -1)
-                locale = checkForCodec( lang.substr(indexOfDot + 1) );
+                locale = checkForCodec( ctype.substr(indexOfDot + 1) );
+
+            // 2. CODESET from lang if it contains a .CODESET part
+            if (!locale) {
+                indexOfDot = lang.find('.');
+                if (indexOfDot != -1)
+                    locale = checkForCodec( lang.substr(indexOfDot + 1) );
+            }
+
+            // 3. ctype (maybe the locale is named "ISO-8859-1" or something)
+            if (!locale && !ctype.empty() && ctype != "C")
+                locale = checkForCodec(ctype);
+
+            // 4. locale (ditto)
+            if (!locale && !lang.empty())
+                locale = checkForCodec(lang);
+
+            // 5. "@euro"
+            if ((!locale && (ctype.find("@euro") != string::npos)) || (lang.find("@euro") != string::npos))
+                locale = checkForCodec("ISO 8859-15");
         }
 
-        // 3. ctype (maybe the locale is named "ISO-8859-1" or something)
-        if (!locale && !ctype.empty() && ctype != "C")
-            locale = checkForCodec(ctype);
-
-        // 4. locale (ditto)
-        if (!locale && !lang.empty())
-            locale = checkForCodec(lang);
-
-        // 5. "@euro"
-        if ((!locale && (ctype.find("@euro") != string::npos)) || (lang.find("@euro") != string::npos))
-            locale = checkForCodec("ISO 8859-15");
+#endif
+        // If everything failed, we default to 8859-1
+        if (!locale)
+            locale = TextCodec::codecForName("ISO 8859-1");
+        codecForLocale_m = locale;
+        return locale;
     }
 
-#endif
-    // If everything failed, we default to 8859-1
-    if (!locale)
-        locale = TextCodec::codecForName("ISO 8859-1");
-    codecForLocale_m = locale;
-    return locale;
-}
+    static void setup() {
+        static bool initialized = false;
+        if (initialized)
+            return;
+        initialized = true;
 
-static void setup()
-{
-    static bool initialized = false;
-    if (initialized)
-        return;
-    initialized = true;
-
-    (void)new TsciiCodec;
-    for (int i = 0; i < 9; ++i)
-        (void)new IsciiCodec(i);
-    for (int i = 0; i < SimpleTextCodec::numSimpleCodecs; ++i)
-        (void)new SimpleTextCodec(i);
+        (void) new TsciiCodec;
+        for (int i = 0; i < 9; ++i)
+            (void) new IsciiCodec(i);
+        for (int i = 0; i < SimpleTextCodec::numSimpleCodecs; ++i)
+            (void) new SimpleTextCodec(i);
 
 #  if !defined(Z_NO_BIG_TEXTCODECS) && !defined(__INTEGRITY)
-    (void)new Gb18030Codec;
-    (void)new GbkCodec;
-    (void)new Gb2312Codec;
-    (void)new EucJpCodec;
-    (void)new JisCodec;
-    (void)new SjisCodec;
-    (void)new EucKrCodec;
-    (void)new CP949Codec;
-    (void)new Big5Codec;
-    (void)new Big5hkscsCodec;
+        (void) new Gb18030Codec;
+        (void) new GbkCodec;
+        (void) new Gb2312Codec;
+        (void) new EucJpCodec;
+        (void) new JisCodec;
+        (void) new SjisCodec;
+        (void) new EucKrCodec;
+        (void) new CP949Codec;
+        (void) new Big5Codec;
+        (void) new Big5hkscsCodec;
 #  endif // !Z_NO_BIG_TEXTCODECS && !__INTEGRITY
 
 #if defined(WIN32)
-    (void) new WindowsLocalCodec;
+        (void) new WindowsLocalCodec;
 #endif // WIN32
 
-    (void)new Utf16Codec;
-    (void)new Utf16BECodec;
-    (void)new Utf16LECodec;
-    (void)new Utf32Codec;
-    (void)new Utf32BECodec;
-    (void)new Utf32LECodec;
-    (void)new Latin15Codec;
-    (void)new Latin1Codec;
-    (void)new Utf8Codec;
-}
+        (void) new Utf16Codec;
+        (void) new Utf16BECodec;
+        (void) new Utf16LECodec;
+        (void) new Utf32Codec;
+        (void) new Utf32BECodec;
+        (void) new Utf32LECodec;
+        (void) new Latin15Codec;
+        (void) new Latin1Codec;
+        (void) new Utf8Codec;
+    }
 
 /*!
     \enum TextCodec::ConversionFlag
@@ -254,13 +253,12 @@ static void setup()
 /*!
     Destroys the ConverterState object.
 */
-TextCodec::ConverterState::~ConverterState()
-{
-    if (flags & FreeFunction)
-        (TextCodecUnalignedPointer::decode(state_data))(this);
-    else if (d)
-        free(d);
-}
+    TextCodec::ConverterState::~ConverterState() {
+        if (flags & FreeFunction)
+            (TextCodecUnalignedPointer::decode(state_data))(this);
+        else if (d)
+            free(d);
+    }
 
 /*!
     \class TextCodec
@@ -397,15 +395,14 @@ TextCodec::ConverterState::~ConverterState()
     new). Libtextcodec takes ownership and will delete it when the application
     terminates.
 */
-TextCodec::TextCodec()
-{
-    std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
+    TextCodec::TextCodec() {
+        std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
 
-    if (allCodecs.empty())
-        setup();
+        if (allCodecs.empty())
+            setup();
 
-    allCodecs.push_front(this);
-}
+        allCodecs.push_front(this);
+    }
 
 
 /*!
@@ -414,9 +411,8 @@ TextCodec::TextCodec()
     Destroys the TextCodec. Note that you should not delete codecs
     yourself: once created they become libtextcodec responsibility.
 */
-TextCodec::~TextCodec()
-{
-}
+    TextCodec::~TextCodec() {
+    }
 
 /*!
     \fn TextCodec *TextCodec::codecForName(const char *name)
@@ -432,41 +428,40 @@ TextCodec::~TextCodec()
     which best matches \a name; the match is case-insensitive. Returns
     0 if no codec matching the name \a name could be found.
 */
-TextCodec *TextCodec::codecForName(const string &name)
-{
-    if (name.size() <= 0)
-        return 0;
+    TextCodec *TextCodec::codecForName(const string &name) {
+        if (name.size() <= 0)
+            return 0;
 
-    std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
+        std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
 
-    setup();
-    TextCodecCache *cache = &codecCache;
-    TextCodec *codec;
-    if (cache && cache->find(name) != cache->cend()) {
-        codec = cache->at(name);
-        if (codec)
-            return codec;
-    }
-
-    for (TextCodecListConstIt it = allCodecs.cbegin(), cend = allCodecs.cend(); it != cend; ++it) {
-        TextCodec *cursor = *it;
-        if (TextCodecNameMatch(cursor->name().data(), name.data())) {
-            if (cache)
-                cache->insert(std::pair<string, TextCodec *>(name, cursor));
-            return cursor;
+        setup();
+        TextCodecCache *cache = &codecCache;
+        TextCodec *codec;
+        if (cache && cache->find(name) != cache->cend()) {
+            codec = cache->at(name);
+            if (codec)
+                return codec;
         }
-        list<string> aliases = cursor->aliases();
-        for (list<string>::const_iterator ait = aliases.cbegin(), acend = aliases.cend(); ait != acend; ++ait) {
-            if (TextCodecNameMatch((*ait).data(), name.data())) {
+
+        for (TextCodecListConstIt it = allCodecs.cbegin(), cend = allCodecs.cend(); it != cend; ++it) {
+            TextCodec *cursor = *it;
+            if (TextCodecNameMatch(cursor->name().data(), name.data())) {
                 if (cache)
                     cache->insert(std::pair<string, TextCodec *>(name, cursor));
                 return cursor;
             }
+            list<string> aliases = cursor->aliases();
+            for (list<string>::const_iterator ait = aliases.cbegin(), acend = aliases.cend(); ait != acend; ++ait) {
+                if (TextCodecNameMatch((*ait).data(), name.data())) {
+                    if (cache)
+                        cache->insert(std::pair<string, TextCodec *>(name, cursor));
+                    return cursor;
+                }
+            }
         }
-    }
 
-    return 0;
-}
+        return 0;
+    }
 
 
 /*!
@@ -474,36 +469,35 @@ TextCodec *TextCodec::codecForName(const string &name)
     Returns the TextCodec which matches the
     \l{TextCodec::mibEnum()}{MIBenum} \a mib.
 */
-TextCodec* TextCodec::codecForMib(int mib)
-{
-    std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
+    TextCodec *TextCodec::codecForMib(int mib) {
+        std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
 
-    if (allCodecs.empty())
-        setup();
+        if (allCodecs.empty())
+            setup();
 
-    //key = "MIB: " + string::number(mib);
-    std::stringstream key_s;
-    key_s << "MIB: " << mib;
-    string key = key_s.str();
+        //key = "MIB: " + string::number(mib);
+        std::stringstream key_s;
+        key_s << "MIB: " << mib;
+        string key = key_s.str();
 
-    TextCodecCache *cache = &codecCache;
-    TextCodec *codec;
-    if (cache && cache->find(key) != cache->cend()) {
-        codec = cache->at(key);
-        if (codec)
-            return codec;
-    }
-
-    for (TextCodecListConstIt it = allCodecs.cbegin(), cend = allCodecs.cend(); it != cend; ++it) {
-        TextCodec *cursor = *it;
-        if (cursor->mibEnum() == mib) {
-            if (cache)
-                cache->insert(std::pair<string, TextCodec *>(key, cursor));
-            return cursor;
+        TextCodecCache *cache = &codecCache;
+        TextCodec *codec;
+        if (cache && cache->find(key) != cache->cend()) {
+            codec = cache->at(key);
+            if (codec)
+                return codec;
         }
+
+        for (TextCodecListConstIt it = allCodecs.cbegin(), cend = allCodecs.cend(); it != cend; ++it) {
+            TextCodec *cursor = *it;
+            if (cursor->mibEnum() == mib) {
+                if (cache)
+                    cache->insert(std::pair<string, TextCodec *>(key, cursor));
+                return cursor;
+            }
+        }
+        return 0;
     }
-    return 0;
-}
 
 /*!
     \threadsafe
@@ -515,21 +509,20 @@ TextCodec* TextCodec::codecForMib(int mib)
 
     \sa availableMibs(), name(), aliases()
 */
-list<string> TextCodec::availableCodecs()
-{
-    std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
+    list<string> TextCodec::availableCodecs() {
+        std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
 
-    if (allCodecs.empty())
-        setup();
+        if (allCodecs.empty())
+            setup();
 
-    list<string> codecs;
+        list<string> codecs;
 
-    for (TextCodecListConstIt it = allCodecs.cbegin(), cend = allCodecs.cend(); it != cend; ++it) {
-        codecs.push_back((*it)->name());
-        codecs.merge((*it)->aliases());
+        for (TextCodecListConstIt it = allCodecs.cbegin(), cend = allCodecs.cend(); it != cend; ++it) {
+            codecs.push_back((*it)->name());
+            codecs.merge((*it)->aliases());
+        }
+        return codecs;
     }
-    return codecs;
-}
 
 /*!
     \threadsafe
@@ -538,20 +531,19 @@ list<string> TextCodec::availableCodecs()
 
     \sa availableCodecs(), mibEnum()
 */
-list<int> TextCodec::availableMibs()
-{
-    std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
+    list<int> TextCodec::availableMibs() {
+        std::lock_guard<std::recursive_mutex> locker(textCodecsMutex);
 
-    if (allCodecs.empty())
-        setup();
+        if (allCodecs.empty())
+            setup();
 
-    list<int> codecs;
+        list<int> codecs;
 
-    for (TextCodecListConstIt it = allCodecs.cbegin(), cend = allCodecs.cend(); it != cend; ++it)
-        codecs.push_back((*it)->mibEnum());
+        for (TextCodecListConstIt it = allCodecs.cbegin(), cend = allCodecs.cend(); it != cend; ++it)
+            codecs.push_back((*it)->mibEnum());
 
-    return codecs;
-}
+        return codecs;
+    }
 
 /*!
     \nonreentrant
@@ -565,10 +557,9 @@ list<int> TextCodec::availableMibs()
 
     \sa codecForLocale()
 */
-void TextCodec::setCodecForLocale(TextCodec *c)
-{
-    codecForLocale_m = c;
-}
+    void TextCodec::setCodecForLocale(TextCodec *c) {
+        codecForLocale_m = c;
+    }
 
 /*!
     \threadsafe
@@ -578,16 +569,15 @@ void TextCodec::setCodecForLocale(TextCodec *c)
     Note that in these cases the codec's name will be "System".
 */
 
-TextCodec* TextCodec::codecForLocale()
-{
-    TextCodec *codec = codecForLocale_m;
-    if (!codec) {
-        // setupLocaleMapper locks as necessary
-        codec = setupLocaleMapper();
-    }
+    TextCodec *TextCodec::codecForLocale() {
+        TextCodec *codec = codecForLocale_m;
+        if (!codec) {
+            // setupLocaleMapper locks as necessary
+            codec = setupLocaleMapper();
+        }
 
-    return codec;
-}
+        return codec;
+    }
 
 
 /*!
@@ -617,10 +607,9 @@ TextCodec* TextCodec::codecForLocale()
   Standard aliases for codecs can be found in the
   \l{IANA character-sets encoding file}.
 */
-list<string> TextCodec::aliases() const
-{
-    return list<string>();
-}
+    list<string> TextCodec::aliases() const {
+        return list<string>();
+    }
 
 /*!
     \fn std::basic_string<uint16_t> TextCodec::convertToUnicode(const char *chars, int len,
@@ -660,10 +649,9 @@ list<string> TextCodec::aliases() const
 
     The caller is responsible for deleting the returned object.
 */
-TextDecoder* TextCodec::makeDecoder(TextCodec::ConversionFlags flags) const
-{
-    return new TextDecoder(this, flags);
-}
+    TextDecoder *TextCodec::makeDecoder(TextCodec::ConversionFlags flags) const {
+        return new TextDecoder(this, flags);
+    }
 
 /*!
     Creates a TextEncoder with a specified \a flags to encode chunks
@@ -671,10 +659,9 @@ TextDecoder* TextCodec::makeDecoder(TextCodec::ConversionFlags flags) const
 
     The caller is responsible for deleting the returned object.
 */
-TextEncoder* TextCodec::makeEncoder(TextCodec::ConversionFlags flags) const
-{
-    return new TextEncoder(this, flags);
-}
+    TextEncoder *TextCodec::makeEncoder(TextCodec::ConversionFlags flags) const {
+        return new TextEncoder(this, flags);
+    }
 
 /*!
     \fn std::string TextCodec::fromUnicode(const uint16_t *input, int number,
@@ -691,10 +678,9 @@ TextEncoder* TextCodec::makeEncoder(TextCodec::ConversionFlags flags) const
     Converts \a str from Unicode to the encoding of this codec, and
     returns the result in a string.
 */
-string TextCodec::fromUnicode(const u16string& str) const
-{
-    return convertFromUnicode(str.data(), str.length(), 0);
-}
+    string TextCodec::fromUnicode(const u16string &str) const {
+        return convertFromUnicode(str.data(), str.length(), 0);
+    }
 
 /*!
     \fn std::basic_string<uint16_t> TextCodec::toUnicode(const char *input, int size,
@@ -711,46 +697,42 @@ string TextCodec::fromUnicode(const u16string& str) const
     Converts \a a from the encoding of this codec to Unicode, and
     returns the result in a std::basic_string<uint16_t>.
 */
-u16string TextCodec::toUnicode(const string& a) const
-{
-    return convertToUnicode(a.data(), a.length(), 0);
-}
+    u16string TextCodec::toUnicode(const string &a) const {
+        return convertToUnicode(a.data(), a.length(), 0);
+    }
 
 /*!
     Returns \c true if the Unicode character \a ch can be fully encoded
     with this codec; otherwise returns \c false.
 */
-bool TextCodec::canEncode(ushort ch) const
-{
-    ConverterState state;
-    state.flags = ConvertInvalidToNull;
-    convertFromUnicode(&ch, 1, &state);
-    return (state.invalidChars == 0);
-}
+    bool TextCodec::canEncode(ushort ch) const {
+        ConverterState state;
+        state.flags = ConvertInvalidToNull;
+        convertFromUnicode(&ch, 1, &state);
+        return (state.invalidChars == 0);
+    }
 
 /*!
     \overload
 
     \a s contains the string being tested for encode-ability.
 */
-bool TextCodec::canEncode(const u16string& s) const
-{
-    ConverterState state;
-    state.flags = ConvertInvalidToNull;
-    convertFromUnicode(s.data(), s.length(), &state);
-    return (state.invalidChars == 0);
-}
+    bool TextCodec::canEncode(const u16string &s) const {
+        ConverterState state;
+        state.flags = ConvertInvalidToNull;
+        convertFromUnicode(s.data(), s.length(), &state);
+        return (state.invalidChars == 0);
+    }
 
 /*!
     \overload
 
     \a chars contains the source characters.
 */
-u16string TextCodec::toUnicode(const char *chars) const
-{
-    int len = strlen(chars);
-    return convertToUnicode(chars, len, 0);
-}
+    u16string TextCodec::toUnicode(const char *chars) const {
+        int len = strlen(chars);
+        return convertToUnicode(chars, len, 0);
+    }
 
 
 /*!
@@ -776,18 +758,16 @@ u16string TextCodec::toUnicode(const char *chars) const
 /*!
     Constructs a text encoder for the given \a codec and conversion \a flags.
 */
-TextEncoder::TextEncoder(const TextCodec *codec, TextCodec::ConversionFlags flags)
-    : c(codec), state()
-{
-    state.flags = flags;
-}
+    TextEncoder::TextEncoder(const TextCodec *codec, TextCodec::ConversionFlags flags)
+            : c(codec), state() {
+        state.flags = flags;
+    }
 
 /*!
     Destroys the encoder.
 */
-TextEncoder::~TextEncoder()
-{
-}
+    TextEncoder::~TextEncoder() {
+    }
 
 /*!
     \internal
@@ -795,19 +775,17 @@ TextEncoder::~TextEncoder()
     an error was encountered, the produced result is undefined, and gets converted as according
     to the conversion flags.
  */
-bool TextEncoder::hasFailure() const
-{
-    return state.invalidChars != 0;
-}
+    bool TextEncoder::hasFailure() const {
+        return state.invalidChars != 0;
+    }
 
 /*!
     Converts the uint16 type string \a str into an encoded string.
 */
-string TextEncoder::fromUnicode(const u16string& str)
-{
-    string result = c->fromUnicode(str.data(), str.length(), &state);
-    return result;
-}
+    string TextEncoder::fromUnicode(const u16string &str) {
+        string result = c->fromUnicode(str.data(), str.length(), &state);
+        return result;
+    }
 
 /*!
     \overload
@@ -815,11 +793,10 @@ string TextEncoder::fromUnicode(const u16string& str)
     Converts \a len characters (not bytes) from \a uc, and returns the
     result in a string.
 */
-string TextEncoder::fromUnicode(const ushort *uc, int len)
-{
-    string result = c->fromUnicode(uc, len, &state);
-    return result;
-}
+    string TextEncoder::fromUnicode(const ushort *uc, int len) {
+        string result = c->fromUnicode(uc, len, &state);
+        return result;
+    }
 
 /*!
     \class TextDecoder
@@ -845,18 +822,16 @@ string TextEncoder::fromUnicode(const ushort *uc, int len)
     Constructs a text decoder for the given \a codec and conversion \a flags.
 */
 
-TextDecoder::TextDecoder(const TextCodec *codec, TextCodec::ConversionFlags flags)
-    : c(codec), state()
-{
-    state.flags = flags;
-}
+    TextDecoder::TextDecoder(const TextCodec *codec, TextCodec::ConversionFlags flags)
+            : c(codec), state() {
+        state.flags = flags;
+    }
 
 /*!
     Destroys the decoder.
 */
-TextDecoder::~TextDecoder()
-{
-}
+    TextDecoder::~TextDecoder() {
+    }
 
 /*!
     \fn std::basic_string<uint16_t> TextDecoder::toUnicode(const char *chars, int len)
@@ -868,60 +843,57 @@ TextDecoder::~TextDecoder()
     encoding is at the end of the characters), the decoder remembers
     enough state to continue with the next call to this function.
 */
-u16string TextDecoder::toUnicode(const char *chars, int len)
-{
-    return c->toUnicode(chars, len, &state);
-}
-
-void from_latin1(ushort *dst, const char *str, size_t size)
-{
-    while (size--)
-        *dst++ = (uchar)*str++;
-}
-void to_latin1(uchar *dst, const ushort *src, int length)
-{
-    while (length--) {
-        *dst++ = (*src>0xff) ? '?' : (uchar) *src;
-        ++src;
+    u16string TextDecoder::toUnicode(const char *chars, int len) {
+        return c->toUnicode(chars, len, &state);
     }
-}
-u16string u16string_fromLatin1(const char *str, int size)
-{
-    std::vector<uint16_t> d(size+1);
-    d[size] = '\0';
-    from_latin1(d.data(), str, uint(size));
-    std::basic_string<uint16_t> s(&d[0],size);
-    return s;
-}
-string u16string_toLatin1(const ushort *src, int length)
-{
-    std::vector<char> d(length+1);
-    d[length] = '\0';
-    to_latin1((uchar *)d.data(), src, length);
-    return string(d.data(),length);
-}
+
+    void from_latin1(ushort *dst, const char *str, size_t size) {
+        while (size--)
+            *dst++ = (uchar) *str++;
+    }
+
+    void to_latin1(uchar *dst, const ushort *src, int length) {
+        while (length--) {
+            *dst++ = (*src > 0xff) ? '?' : (uchar) *src;
+            ++src;
+        }
+    }
+
+    u16string u16string_fromLatin1(const char *str, int size) {
+        std::vector<uint16_t> d(size + 1);
+        d[size] = '\0';
+        from_latin1(d.data(), str, uint(size));
+        std::basic_string<uint16_t> s(&d[0], size);
+        return s;
+    }
+
+    string u16string_toLatin1(const ushort *src, int length) {
+        std::vector<char> d(length + 1);
+        d[length] = '\0';
+        to_latin1((uchar *) d.data(), src, length);
+        return string(d.data(), length);
+    }
 
 
 /*! \overload
 
     The converted string is returned in \a target.
  */
-void TextDecoder::toUnicode(u16string *target, const char *chars, int len)
-{
-    if(!target)
-        return;
-    switch (c->mibEnum()) {
-    case 106: // utf8
-        static_cast<const Utf8Codec*>(c)->convertToUnicode(target, chars, len, &state);
-        break;
-    case 4: // latin1
-        target->resize(len);
-        from_latin1((ushort*)target->data(), chars, len);
-        break;
-    default:
-        *target = c->toUnicode(chars, len, &state);
+    void TextDecoder::toUnicode(u16string *target, const char *chars, int len) {
+        if (!target)
+            return;
+        switch (c->mibEnum()) {
+            case 106: // utf8
+                static_cast<const Utf8Codec *>(c)->convertToUnicode(target, chars, len, &state);
+                break;
+            case 4: // latin1
+                target->resize(len);
+                from_latin1((ushort *) target->data(), chars, len);
+                break;
+            default:
+                *target = c->toUnicode(chars, len, &state);
+        }
     }
-}
 
 
 /*!
@@ -930,10 +902,9 @@ void TextDecoder::toUnicode(u16string *target, const char *chars, int len)
     Converts the bytes in the byte array specified by \a ba to Unicode
     and returns the result.
 */
-u16string TextDecoder::toUnicode(const string &ba)
-{
-    return c->toUnicode(ba.data(), ba.length(), &state);
-}
+    u16string TextDecoder::toUnicode(const string &ba) {
+        return c->toUnicode(ba.data(), ba.length(), &state);
+    }
 
 /*!
     Tries to detect the encoding of the provided snippet of HTML in
@@ -945,40 +916,39 @@ u16string TextDecoder::toUnicode(const string &ba)
 
     \sa codecForUtfText()
 */
-TextCodec *TextCodec::codecForHtml(const string &ba, TextCodec *defaultCodec)
-{
-    // determine charset
-    TextCodec *c = TextCodec::codecForUtfText(ba, 0);
-    if (!c) {
-        string header = ba.substr(0,1024);
-        std::transform(header.begin(),header.end(),header.begin(),z_tolower);
-        int pos = header.find("meta ");
-        if (pos != -1) {
-            pos = header.find("charset=", pos);
+    TextCodec *TextCodec::codecForHtml(const string &ba, TextCodec *defaultCodec) {
+        // determine charset
+        TextCodec *c = TextCodec::codecForUtfText(ba, 0);
+        if (!c) {
+            string header = ba.substr(0, 1024);
+            std::transform(header.begin(), header.end(), header.begin(), z_tolower);
+            int pos = header.find("meta ");
             if (pos != -1) {
-                pos += strlen("charset=");
+                pos = header.find("charset=", pos);
+                if (pos != -1) {
+                    pos += strlen("charset=");
 
-                int pos2 = pos;
-                // The attribute can be closed with either """, "'", ">" or "/",
-                // none of which are valid charset characters.
-                while ((size_t)++pos2 < header.size()) {
-                    char ch = header.at(pos2);
-                    if (ch == '\"' || ch == '\'' || ch == '>') {
-                        string name = header.substr(pos, pos2 - pos);
-                        if (name == "unicode") // ICU will return UTF-16.
-                            name = "UTF-8";
-                        c = TextCodec::codecForName(name);
-                        return c ? c : defaultCodec;
+                    int pos2 = pos;
+                    // The attribute can be closed with either """, "'", ">" or "/",
+                    // none of which are valid charset characters.
+                    while ((size_t) ++pos2 < header.size()) {
+                        char ch = header.at(pos2);
+                        if (ch == '\"' || ch == '\'' || ch == '>') {
+                            string name = header.substr(pos, pos2 - pos);
+                            if (name == "unicode") // ICU will return UTF-16.
+                                name = "UTF-8";
+                            c = TextCodec::codecForName(name);
+                            return c ? c : defaultCodec;
+                        }
                     }
                 }
             }
         }
-    }
-    if (!c)
-        c = defaultCodec;
+        if (!c)
+            c = defaultCodec;
 
-    return c;
-}
+        return c;
+    }
 
 /*!
     \overload
@@ -989,10 +959,9 @@ TextCodec *TextCodec::codecForHtml(const string &ba, TextCodec *defaultCodec)
     that is capable of decoding the html to unicode. If the codec cannot
     be detected, this overload returns a Latin-1 TextCodec.
 */
-TextCodec *TextCodec::codecForHtml(const string &ba)
-{
-    return codecForHtml(ba, TextCodec::codecForName("ISO-8859-1"));
-}
+    TextCodec *TextCodec::codecForHtml(const string &ba) {
+        return codecForHtml(ba, TextCodec::codecForName("ISO-8859-1"));
+    }
 
 /*!
     Tries to detect the encoding of the provided snippet \a ba by
@@ -1003,39 +972,38 @@ TextCodec *TextCodec::codecForHtml(const string &ba)
 
     \sa codecForHtml()
 */
-TextCodec *TextCodec::codecForUtfText(const string &ba, TextCodec *defaultCodec)
-{
-    const int arraySize = ba.size();
+    TextCodec *TextCodec::codecForUtfText(const string &ba, TextCodec *defaultCodec) {
+        const int arraySize = ba.size();
 
-    if (arraySize > 3) {
-        if ((uchar)ba[0] == 0x00
-            && (uchar)ba[1] == 0x00
-            && (uchar)ba[2] == 0xFE
-            && (uchar)ba[3] == 0xFF)
-            return TextCodec::codecForMib(1018); // utf-32 be
-        else if ((uchar)ba[0] == 0xFF
-                 && (uchar)ba[1] == 0xFE
-                 && (uchar)ba[2] == 0x00
-                 && (uchar)ba[3] == 0x00)
-            return TextCodec::codecForMib(1019); // utf-32 le
+        if (arraySize > 3) {
+            if ((uchar) ba[0] == 0x00
+                && (uchar) ba[1] == 0x00
+                && (uchar) ba[2] == 0xFE
+                && (uchar) ba[3] == 0xFF)
+                return TextCodec::codecForMib(1018); // utf-32 be
+            else if ((uchar) ba[0] == 0xFF
+                     && (uchar) ba[1] == 0xFE
+                     && (uchar) ba[2] == 0x00
+                     && (uchar) ba[3] == 0x00)
+                return TextCodec::codecForMib(1019); // utf-32 le
+        }
+
+        if (arraySize < 2)
+            return defaultCodec;
+        if ((uchar) ba[0] == 0xfe && (uchar) ba[1] == 0xff)
+            return TextCodec::codecForMib(1013); // utf16 be
+        else if ((uchar) ba[0] == 0xff && (uchar) ba[1] == 0xfe)
+            return TextCodec::codecForMib(1014); // utf16 le
+
+        if (arraySize < 3)
+            return defaultCodec;
+        if ((uchar) ba[0] == 0xef
+            && (uchar) ba[1] == 0xbb
+            && (uchar) ba[2] == 0xbf)
+            return TextCodec::codecForMib(106); // utf-8
+
+        return defaultCodec;
     }
-
-    if (arraySize < 2)
-        return defaultCodec;
-    if ((uchar)ba[0] == 0xfe && (uchar)ba[1] == 0xff)
-        return TextCodec::codecForMib(1013); // utf16 be
-    else if ((uchar)ba[0] == 0xff && (uchar)ba[1] == 0xfe)
-        return TextCodec::codecForMib(1014); // utf16 le
-
-    if (arraySize < 3)
-        return defaultCodec;
-    if ((uchar)ba[0] == 0xef
-        && (uchar)ba[1] == 0xbb
-        && (uchar)ba[2] == 0xbf)
-        return TextCodec::codecForMib(106); // utf-8
-
-    return defaultCodec;
-}
 
 /*!
     \overload
@@ -1047,17 +1015,17 @@ TextCodec *TextCodec::codecForUtfText(const string &ba, TextCodec *defaultCodec)
 
     \sa codecForHtml()
 */
-TextCodec *TextCodec::codecForUtfText(const string &ba)
-{
-    return codecForUtfText(ba, TextCodec::codecForMib(/*Latin 1*/ 4));
-}
+    TextCodec *TextCodec::codecForUtfText(const string &ba) {
+        return codecForUtfText(ba, TextCodec::codecForMib(/*Latin 1*/ 4));
+    }
+
 /*!
     \internal
     Determines whether the decoder encountered a failure while decoding the
     input. If an error was encountered, the produced result is undefined, and
     gets converted as according to the conversion flags.
  */
-bool TextDecoder::hasFailure() const
-{
-    return state.invalidChars != 0;
+    bool TextDecoder::hasFailure() const {
+        return state.invalidChars != 0;
+    }
 }

@@ -31,7 +31,8 @@ set(SOURCE_FILES
         codecs/tsciicodec.cpp
         codecs/tsciicodec_p.h
         codecs/utfcodec.cpp
-        codecs/utfcodec_p.h)
+        codecs/utfcodec_p.h
+        textcodec.h)
 set(SOURCE_WINAPI_FILES
         codecs/windowscodec.cpp
         codecs/windowscodec_p.h)

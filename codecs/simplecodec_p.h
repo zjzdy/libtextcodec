@@ -22,24 +22,24 @@
 #include <cstdint>
 #include "textcodec.h"
 #include "textcodec_p.h"
+namespace zdytool {
+	class SimpleTextCodec: public TextCodec
+	{
+	public:
+		enum { numSimpleCodecs = 30 };
+		explicit SimpleTextCodec(int);
+		~SimpleTextCodec();
 
-class SimpleTextCodec: public TextCodec
-{
-public:
-    enum { numSimpleCodecs = 30 };
-    explicit SimpleTextCodec(int);
-    ~SimpleTextCodec();
+		u16string convertToUnicode(const char *, int, ConverterState *) const override;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const override;
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const override;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const override;
+		string name() const override;
+		list<string> aliases() const override;
+		int mibEnum() const override;
 
-    string name() const override;
-    list<string> aliases() const override;
-    int mibEnum() const override;
-
-private:
-    int forwardIndex;
-    mutable string *reverseMap;
-};
-
+	private:
+		int forwardIndex;
+		mutable string *reverseMap;
+	};
+}
 #endif // SIMPLECODEC_P_H

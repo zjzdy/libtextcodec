@@ -48,16 +48,16 @@
 #include <cstdint>
 #include "textcodec.h"
 #include "textcodec_p.h"
+namespace zdytool {
+	class TsciiCodec : public TextCodec {
+	public:
+		~TsciiCodec();
 
-class TsciiCodec : public TextCodec {
-public:
-    ~TsciiCodec();
+		string name() const;
+		int mibEnum() const;
 
-    string name() const;
-    int mibEnum() const;
-
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const;
-};
-
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const;
+	};
+}
 #endif // TSCIICODEC_P_H

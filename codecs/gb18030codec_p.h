@@ -24,56 +24,56 @@
 #include <cstdint>
 #include "textcodec.h"
 #include "textcodec_p.h"
-
+namespace zdytool {
 #ifndef Z_NO_BIG_TEXTCODECS
 
-class Gb18030Codec : public TextCodec {
-public:
-    Gb18030Codec();
+	class Gb18030Codec : public TextCodec {
+	public:
+		Gb18030Codec();
 
-    static string _name() { return "GB18030"; }
-    static list<string> _aliases() { return list<string>(); }
-    static int _mibEnum() { return 114; }
+		static string _name() { return "GB18030"; }
+		static list<string> _aliases() { return list<string>(); }
+		static int _mibEnum() { return 114; }
 
-    string name() const { return _name(); }
-    list<string> aliases() const { return _aliases(); }
-    int mibEnum() const { return _mibEnum(); }
+		string name() const { return _name(); }
+		list<string> aliases() const { return _aliases(); }
+		int mibEnum() const { return _mibEnum(); }
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const uint16_t *, int, ConverterState *) const;
-};
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const uint16_t *, int, ConverterState *) const;
+	};
 
-class GbkCodec : public Gb18030Codec {
-public:
-    GbkCodec();
+	class GbkCodec : public Gb18030Codec {
+	public:
+		GbkCodec();
 
-    static string _name();
-    static list<string> _aliases();
-    static int _mibEnum();
+		static string _name();
+		static list<string> _aliases();
+		static int _mibEnum();
 
-    string name() const { return _name(); }
-    list<string> aliases() const { return _aliases(); }
-    int mibEnum() const { return _mibEnum(); }
+		string name() const { return _name(); }
+		list<string> aliases() const { return _aliases(); }
+		int mibEnum() const { return _mibEnum(); }
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const;
-};
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const;
+	};
 
-class Gb2312Codec : public Gb18030Codec {
-public:
-    Gb2312Codec();
+	class Gb2312Codec : public Gb18030Codec {
+	public:
+		Gb2312Codec();
 
-    static string _name();
-    static list<string> _aliases() { return list<string>(); }
-    static int _mibEnum();
+		static string _name();
+		static list<string> _aliases() { return list<string>(); }
+		static int _mibEnum();
 
-    string name() const { return _name(); }
-    int mibEnum() const { return _mibEnum(); }
+		string name() const { return _name(); }
+		int mibEnum() const { return _mibEnum(); }
 
-    u16string convertToUnicode(const char *, int, ConverterState *) const;
-    string convertFromUnicode(const ushort *, int, ConverterState *) const;
-};
+		u16string convertToUnicode(const char *, int, ConverterState *) const;
+		string convertFromUnicode(const ushort *, int, ConverterState *) const;
+	};
 
 #endif // Z_NO_BIG_TEXTCODECS
-
+}
 #endif // GB18030CODEC_P_H
