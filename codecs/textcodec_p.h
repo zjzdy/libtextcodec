@@ -59,7 +59,7 @@ namespace zdytool {
         typedef int64_t Signed;
     };
 #if defined(__GNUC__) && defined(__SIZEOF_INT128__)
-    template <>    struct QIntegerForSize<16> { __extension__ typedef unsigned __int128 Unsigned; __extension__ typedef __int128 Signed; };
+    template <>    struct IntegerForSize<16> { __extension__ typedef unsigned __int128 Unsigned; __extension__ typedef __int128 Signed; };
 #endif
     template<class T>
     struct IntegerForSizeof : IntegerForSize<sizeof(T)> {
