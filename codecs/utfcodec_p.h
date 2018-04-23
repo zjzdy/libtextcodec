@@ -256,6 +256,13 @@ namespace zdytool {
 		static u16string convertToUnicode(const char *, int, TextCodec::ConverterState *);
 		static string convertFromUnicode(const ushort *, int);
 		static string convertFromUnicode(const ushort *, int, TextCodec::ConverterState *);
+		struct ValidUtf8Result {
+			bool isValidUtf8;
+			bool isValidAscii;
+		};
+		static ValidUtf8Result isValidUtf8(const char *, size_t);
+		static int compareUtf8(const char *, size_t, const ushort *, int);
+		static int compareUtf8(const char *, size_t, string s);
 	};
 
 	struct Utf16

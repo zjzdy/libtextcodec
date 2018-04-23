@@ -291,6 +291,96 @@ namespace zdytool {
 		}
 		return result_str;
 	}
+	struct QUtf8NoOutputTraits : public Utf8BaseTraitsNoAscii
+	{
+		struct NoOutput {};
+		static void appendUtf16(const NoOutput &, ushort) {}
+		static void appendUcs4(const NoOutput &, uint) {}
+	};
+
+	Utf8::ValidUtf8Result Utf8::isValidUtf8(const char *chars, size_t len)
+	{
+		const uchar *src = reinterpret_cast<const uchar *>(chars);
+		const uchar *end = src + len;
+		const uchar *nextAscii = src;
+		bool isValidAscii = true;
+
+		while (src < end) {
+			if (src >= nextAscii)
+				nextAscii = end;
+			if (src == end)
+				break;
+
+			do {
+				uchar b = *src++;
+				if ((b & 0x80) == 0)
+					continue;
+
+				isValidAscii = false;
+				QUtf8NoOutputTraits::NoOutput output;
+				int res = Utf8Functions::fromUtf8<QUtf8NoOutputTraits>(b, output, src, end);
+				if (res < 0) {
+					// decoding error
+					return { false, false };
+				}
+			} while (src < nextAscii);
+		}
+
+		return { true, isValidAscii };
+	}
+
+	int Utf8::compareUtf8(const char *utf8, size_t u8len, const ushort *utf16, int u16len)
+	{
+		uint uc1, uc2;
+		auto src1 = reinterpret_cast<const uchar *>(utf8);
+		auto end1 = src1 + u8len;
+		int src2 = 0;
+		//QStringIterator src2(utf16, utf16 + u16len);
+
+		while (src1 < end1 && src2 < u16len) {
+			uchar b = *src1++;
+			uint *output = &uc1;
+			int res = Utf8Functions::fromUtf8<Utf8BaseTraits>(b, output, src1, end1);
+			if (res < 0) {
+				// decoding error
+				uc1 = SpecialCharacter::ReplacementCharacter;
+			}
+
+			uc2 = utf16[src2];
+			src2++;
+			if (uc1 != uc2)
+				return int(uc1) - int(uc2);
+		}
+
+		// the shorter string sorts first
+		return (end1 > src1) - int(src2 < u16len);
+	}
+
+	int Utf8::compareUtf8(const char *utf8, size_t u8len, string s)
+	{
+		uint uc1;
+		auto src1 = reinterpret_cast<const uchar *>(utf8);
+		auto end1 = src1 + u8len;
+		auto src2 = reinterpret_cast<const uchar *>(s.data());
+		auto end2 = src2 + s.size();
+
+		while (src1 < end1 && src2 < end2) {
+			uchar b = *src1++;
+			uint *output = &uc1;
+			int res = Utf8Functions::fromUtf8<Utf8BaseTraits>(b, output, src1, end1);
+			if (res < 0) {
+				// decoding error
+				uc1 = SpecialCharacter::ReplacementCharacter;
+			}
+
+			uint uc2 = *src2++;
+			if (uc1 != uc2)
+				return int(uc1) - int(uc2);
+		}
+
+		// the shorter string sorts first
+		return (end1 > src1) - (end2 > src2);
+	}
 
 	string Utf16::convertFromUnicode(const ushort *uc, int len, TextCodec::ConverterState *state, DataEndianness e)
 	{
