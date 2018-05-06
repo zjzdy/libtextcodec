@@ -34,7 +34,6 @@
 #  define Z_LIKELY(x) (x)
 #  define Z_UNLIKELY(x) (x)
 #endif
-#define Z_NO_BIG_TEXTCODECS
 namespace zdytool {
     class TextDecoder;
     class TextEncoder;

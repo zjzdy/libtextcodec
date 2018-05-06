@@ -39,7 +39,8 @@ set(SOURCE_WINAPI_FILES
 set(SOURCE_ENDIAN_FILES
         codecs/endian/boost_endian_intrinsic.hpp
         codecs/endian/endian.hpp)
-set(SOURCE_FILES  ${SOURCE_FILES} ${SOURCE_ENDIAN_FILES})
+set(SOURCE_UTILS_FILES utils/gb18030bitmap.cpp utils/gb18030bitmap.h)
+set(SOURCE_FILES  ${SOURCE_FILES} ${SOURCE_ENDIAN_FILES} ${SOURCE_UTILS_FILES})
 if(WIN32 OR CYGWIN)
     set(SOURCE_FILES  ${SOURCE_FILES} ${SOURCE_WINAPI_FILES})
     link_libraries(User32)
